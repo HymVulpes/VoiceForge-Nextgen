@@ -1,0 +1,516 @@
+# VoiceForge-Nextgen V2 (RAM-Optimized)
+
+**Real-time Voice Conversion with 24GB RAM Optimization**
+
+Priority: **Correctness → Stability → Performance → Debug**
+
+---
+
+## 🚀 What's New in V2
+
+### **RAM Optimization (24GB)**
+- **2GB** Pre-allocated buffer pool (1000 slots)
+- **8GB** Multi-model hot cache (40-160 models)
+- **4GB** Feature cache (F0, HuBERT)
+- **Zero dynamic allocation** during runtime
+- **Lock-free** triple buffering
+- **Zero-copy** audio path where possible
+
+### **Correctness First**
+- ✅ All operations validated before execution
+- ✅ Contract-based validation (shape, dtype, range)
+- ✅ Integrity checks every 60 seconds
+- ✅ No silent failures (all errors logged)
+
+### **Enhanced Stability**
+- ✅ State machine with validated transitions
+- ✅ Automatic failsafe mode on errors
+- ✅ Graceful degradation (never crash)
+- ✅ Self-healing (auto-recovery)
+
+### **Performance Improvements**
+- ✅ Pre-allocated buffers (no GC pauses)
+- ✅ Lock-free communication
+- ✅ Model hot-swapping (zero latency)
+- ✅ Predictive feature caching
+
+---
+
+## 📊 Memory Allocation (24GB System)
+
+```
+Total: 24GB
+├── System/Windows: 4GB     (Reserved)
+├── Audio Buffers: 2GB      (100 slots × 10 sec @ 48kHz)
+├── Model Cache: 8GB        (40-160 RVC models)
+├── Feature Cache: 4GB      (400-4000 feature sets)
+├── Working Memory: 4GB     (Processing, GPU)
+└── Safety Margin: 2GB      (Emergency headroom)
+```
+
+---
+
+## 🏗️ New Architecture
+
+### **V1 vs V2 Comparison**
+
+| Component | V1 (Dynamic) | V2 (Pre-allocated) |
+|-----------|--------------|-------------------|
+| Audio buffers | Ring buffer (dynamic) | Pre-allocated pool |
+| Model loading | Load on demand | Hot cache (8GB) |
+| Features | Extract every time | Cached (4GB) |
+| Communication | Locks | Lock-free triple buffer |
+| Latency | ~18ms | ~12ms (target) |
+| Stability | Good | Excellent |
+
+### **Lock-Free Triple Buffering**
+
+```
+┌─────────────┐
+│ WRITE Buffer│ ← Audio callback writes here
+└─────────────┘
+       ↓ Swap when full
+┌─────────────┐
+│ SWAP Buffer │ ← Ready to swap
+└─────────────┘
+       ↓ Atomic swap
+┌─────────────┐
+│ READ Buffer │ ← Inference reads here
+└─────────────┘
+```
+
+**Advantages**:
+- No locks (no deadlocks)
+- No torn reads/writes
+- Constant-time operations
+- Perfect for realtime audio
+
+---
+
+## 🔧 Installation (V2 Specific)
+
+### **Prerequisites**
+
+**Critical**: 
+- **20GB+ RAM** (24GB recommended)
+- **NVIDIA GPU** with 6GB+ VRAM (for 8GB model cache)
+- **50GB+ free disk** (for logs, snapshots, models)
+
+### **Step 1: Verify System Resources**
+
+```bash
+# Check RAM
+wmic memorychip get capacity
+# Should show 24GB+
+
+# Check GPU VRAM
+nvidia-smi
+# Should show 6GB+ VRAM
+```
+
+### **Step 2: Install (Same as V1)**
+
+```bash
+cd D:\Coding\Project Voice\VoiceForge-Nextgen
+setup.bat
+```
+
+### **Step 3: Configure Memory Limits**
+
+Edit `config.yaml`:
+
+```yaml
+resources:
+  total_ram_gb: 24  # Adjust to your system
+  allocation:
+    model_cache_gb: 8    # Reduce if < 24GB RAM
+    feature_cache_gb: 4  # Reduce if < 24GB RAM
+```
+
+### **Step 4: Run Diagnostic**
+
+```bash
+python diagnostic_tool.py
+```
+
+**New checks in V2**:
+- ✅ RAM availability (need 10GB+ free)
+- ✅ Disk space (need 5GB+ free)
+- ✅ Buffer pool pre-allocation test
+- ✅ Cache integrity test
+
+---
+
+## 🎯 Running V2
+
+### **Golden Path (No AI)**
+
+```bash
+python app/main_v2.py
+```
+
+**Expected output**:
+```
+VoiceForge-Nextgen V2 (RAM-Optimized)
+Priority: Correctness → Stability → Performance → Debug
+====================================================================
+Checking system resources...
+System RAM: 24.0GB total, 18.2GB available
+✓ Resources adequate
+
+Pre-allocating buffer pool (2GB)...
+Buffer pool allocated: 2.00 GB
+✓ Buffer pool integrity OK
+
+Initializing model cache (8GB)...
+Initializing feature cache (4GB)...
+✓ All initialization checks passed
+
+Starting GOLDEN PATH mode (no AI processing)
+✓ Golden Path ACTIVE
+Speak into microphone - audio should route to Virtual Audio Cable
+```
+
+### **Monitoring Output**
+
+Every 5 seconds:
+```
+------------------------------------------------------------
+Audio Stream: state=running, in_callbacks=1024, out_writes=1024, errors=0
+Buffer Pool: 5/100 (5.0%), max_usage=8
+Model Cache: 0 models, 0.00GB/8.00GB
+Feature Cache: 0 entries, hit_rate=0.0%
+CPU: 12.5% | RAM: 8450MB (35.2%)
+GPU: NVIDIA GeForce RTX 4070 | VRAM: 128MB
+------------------------------------------------------------
+```
+
+---
+
+## 🔍 Correctness Guarantees
+
+### **1. Contract Validation**
+
+All audio data validated:
+```python
+# Example validation
+if audio_data.dtype != np.float32:
+    logger.error("Invalid dtype")
+    # Convert or reject
+
+if not np.isfinite(audio_data).all():
+    logger.error("Non-finite values detected")
+    audio_data = np.nan_to_num(audio_data)
+```
+
+### **2. State Machine**
+
+Only valid transitions allowed:
+```
+STOPPED → STARTING → RUNNING
+    ↓         ↓         ↓
+ FAILED ← FAILSAFE ← STOPPING
+```
+
+Invalid transitions rejected:
+```
+RUNNING → STOPPED  ❌ (must go through STOPPING)
+STOPPED → FAILSAFE ❌ (not reachable)
+```
+
+### **3. Integrity Checks**
+
+Every 60 seconds:
+- Buffer pool: no double-frees, no corruption
+- Audio stream: state consistency
+- Cache: no memory leaks
+
+### **4. Snapshot on Failure**
+
+Any error → automatic snapshot:
+```
+logs/snapshots/
+  └── snapshot_abc12345_ERROR_INFERENCE/
+      ├── metadata.json
+      ├── audio_input.npy    # Exact input that caused error
+      ├── audio_output.npy   # Output if any
+      └── system_state.json  # Full system state
+```
+
+---
+
+## ⚡ Performance Optimizations
+
+### **1. Zero-Copy Audio Path**
+
+V1 (Copy):
+```
+Mic → Buffer → Copy → Process → Copy → VAC
+```
+
+V2 (Zero-copy):
+```
+Mic → Pre-allocated slot → Process in-place → VAC
+```
+
+### **2. Model Hot-Swapping**
+
+V1:
+```
+Load model (500ms) → Inference (15ms)
+Total: 515ms per model switch
+```
+
+V2:
+```
+Model already in cache → Inference (15ms)
+Total: 15ms (97% faster)
+```
+
+### **3. Feature Caching**
+
+V1:
+```
+Extract F0 (10ms) + HuBERT (8ms) = 18ms per chunk
+```
+
+V2 (cache hit):
+```
+Lookup cached features (0.01ms)
+Total: 99.9% faster
+```
+
+### **4. Latency Breakdown**
+
+| Stage | V1 | V2 (Target) |
+|-------|-------|-------------|
+| Input | 2.3ms | 1.8ms |
+| Preprocess | 1.2ms | 0.5ms |
+| Inference | 12.1ms | 8.0ms |
+| Postprocess | 0.8ms | 0.3ms |
+| Output | 2.1ms | 1.4ms |
+| **Total** | **18.5ms** | **12.0ms** |
+
+---
+
+## 🛡️ Stability Features
+
+### **1. Failsafe Mode**
+
+Automatic activation on:
+- 5 consecutive errors
+- Buffer pool corruption
+- Device failure
+- Inference timeout
+
+**Behavior**: Direct mic → VAC passthrough (no AI)
+
+### **2. Graceful Degradation**
+
+Priority cascade:
+1. Try full AI pipeline
+2. If fails → Try cached features
+3. If fails → Passthrough audio
+4. Never crash
+
+### **3. Self-Healing**
+
+Auto-recovery after 2 seconds:
+```
+Error → Failsafe → Wait 2s → Retry AI
+```
+
+### **4. Resource Monitoring**
+
+Auto-evict if:
+- RAM > 85% (evict LRU model)
+- GPU VRAM > 90% (evict LRU features)
+- CPU > 80% (reduce buffer size)
+
+---
+
+## 📝 Configuration (config.yaml)
+
+### **Critical Settings**
+
+```yaml
+resources:
+  total_ram_gb: 24          # MUST match your system
+  allocation:
+    audio_buffers_gb: 2     # Buffer pool size
+    model_cache_gb: 8       # Model cache
+    feature_cache_gb: 4     # Feature cache
+
+audio:
+  buffer_size: 256          # Lower = less latency, less stable
+  validate_devices_on_startup: true
+
+processing:
+  failsafe:
+    max_consecutive_errors: 5
+    auto_recover: true
+    
+debug:
+  snapshots:
+    on_error: true          # Always capture errors
+    on_latency_spike: true  # Capture if > 40ms
+```
+
+---
+
+## 🐛 Debugging V2
+
+### **1. Check Buffer Pool Integrity**
+
+```python
+from app.audio.buffer_pool import BufferPool
+
+pool = BufferPool(...)
+assert pool.validate_integrity()  # Should never fail
+```
+
+### **2. Analyze Snapshots**
+
+```python
+import json
+import numpy as np
+
+# Load snapshot
+metadata = json.load(open('metadata.json'))
+
+# Check buffer pool state
+pool_stats = metadata['additional_data']['buffer_pool']
+print(f"Free slots: {pool_stats['free']}/{pool_stats['total_slots']}")
+
+# Check audio
+audio = np.load('audio_input.npy')
+print(f"RMS: {np.sqrt(np.mean(audio**2))}")
+```
+
+### **3. Monitor Cache Performance**
+
+Check logs for:
+```
+Model Cache: hit_rate=95.2% (excellent)
+Feature Cache: hit_rate=87.3% (good)
+```
+
+Low hit rate → increase cache size in config.yaml
+
+---
+
+## 🚨 Troubleshooting V2
+
+### **"Buffer pool exhausted"**
+
+**Cause**: Too many buffers in use
+
+**Solution**:
+1. Increase `num_slots` in config
+2. Check for buffer leaks (integrity check)
+3. Reduce processing latency
+
+### **"Integrity check failed"**
+
+**Cause**: Memory corruption detected
+
+**Solution**:
+1. Check logs for details
+2. Snapshot captured automatically
+3. Restart application
+4. Report bug with snapshot
+
+### **High memory usage**
+
+**Cause**: Caches too large for system
+
+**Solution**: Edit `config.yaml`:
+```yaml
+cache:
+  model_cache:
+    max_size_gb: 4  # Reduce from 8
+  feature_cache:
+    max_size_gb: 2  # Reduce from 4
+```
+
+### **Failsafe keeps activating**
+
+**Cause**: AI processing unstable
+
+**Solution**:
+1. Check GPU drivers
+2. Reduce inference timeout
+3. Enable debug logging
+4. Check snapshots for errors
+
+---
+
+## 📈 Performance Tuning
+
+### **For Maximum Speed (Sacrifices Stability)**
+
+```yaml
+audio:
+  buffer_size: 128           # Lower latency
+
+processing:
+  failsafe:
+    max_consecutive_errors: 10  # More tolerance
+```
+
+### **For Maximum Stability (Sacrifices Speed)**
+
+```yaml
+audio:
+  buffer_size: 512           # Higher latency
+
+processing:
+  latency:
+    critical_threshold_ms: 100.0  # More tolerance
+    
+  failsafe:
+    max_consecutive_errors: 3     # Fast failsafe
+```
+
+---
+
+## 🎓 Best Practices
+
+### **DO**
+- ✅ Run diagnostic before each session
+- ✅ Monitor logs during first runs
+- ✅ Keep 10GB+ RAM free
+- ✅ Check snapshots after errors
+- ✅ Validate buffer pool periodically
+
+### **DON'T**
+- ❌ Modify buffer pool during runtime
+- ❌ Disable integrity checks
+- ❌ Ignore failsafe warnings
+- ❌ Run with < 16GB RAM
+- ❌ Skip device validation
+
+---
+
+## 📊 Success Metrics
+
+**V2 is working correctly if**:
+- ✅ Golden Path runs without errors
+- ✅ Buffer pool integrity always passes
+- ✅ No failsafe activations in Golden Path
+- ✅ Memory usage stable over time
+- ✅ Cache hit rates > 80%
+
+---
+
+**V2 Changes Summary**:
+- ✅ 2GB pre-allocated buffers
+- ✅ 8GB model hot cache
+- ✅ 4GB feature cache
+- ✅ Lock-free triple buffering
+- ✅ Comprehensive validation
+- ✅ Auto-failsafe
+- ✅ Self-healing
+- ✅ Full observability
+
+**Priority maintained**: Correctness → Stability → Performance → Debug
