@@ -1,15 +1,14 @@
 """
 VoiceForge-Nextgen Launcher
 File: launcher.py
-Compile:
+
+Build:
     pyinstaller launcher.py --onefile --windowed --name=Start
 """
 
 import sys
-import os
-from pathlib import Path
-import subprocess
 import logging
+from pathlib import Path
 
 # =========================
 # Resolve ROOT_DIR
@@ -19,9 +18,10 @@ if getattr(sys, "frozen", False):
 else:
     ROOT_DIR = Path(__file__).parent
 
+sys.path.insert(0, str(ROOT_DIR))
 
 # =========================
-# Logging setup
+# Logging
 # =========================
 log_dir = ROOT_DIR / "logs"
 log_dir.mkdir(exist_ok=True)
@@ -39,98 +39,57 @@ logger = logging.getLogger("VoiceForgeLauncher")
 
 
 # =========================
-# Environment check
+# Diagnostic
 # =========================
-def check_environment():
-    logger.info("Checking environment...")
+def run_diagnostic():
+    """
+    Run diagnostic_tool.py
+    IMPORTANT:
+    - Exit code != 0 is EXPECTED
+    - Diagnostic MUST NOT stop GUI
+    """
+    diagnostic_path = ROOT_DIR / "diagnostic_tool.py"
 
-    # Prefer venv Python
-    venv_python = ROOT_DIR / "venv" / "Scripts" / "python.exe"
-    if venv_python.exists():
-        logger.info(f"Using venv Python: {venv_python}")
-        return str(venv_python)
-
-    # Fallback: system python
-    try:
-        result = subprocess.run(
-            ["python", "--version"],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode == 0:
-            logger.info(f"Using system Python: {result.stdout.strip()}")
-            return "python"
-    except FileNotFoundError:
-        pass
-
-    logger.error("Python not found")
-    return None
-
-
-# =========================
-# Diagnostic runner
-# =========================
-def run_diagnostic(python_exe):
-    logger.info("Running diagnostic tool...")
-
-    diagnostic_script = ROOT_DIR / "diagnostic_tool.py"
-    if not diagnostic_script.exists():
-        logger.warning("diagnostic_tool.py not found → skipping diagnostic")
+    if not diagnostic_path.exists():
+        logger.warning("diagnostic_tool.py not found → skipping")
         return True
 
     try:
-        result = subprocess.run(
-            [python_exe, str(diagnostic_script)],
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        import diagnostic_tool
 
-        if result.returncode == 0:
-            logger.info("✓ Diagnostic PASSED")
+        diagnostic_tool.main()
+        logger.info("Diagnostic finished with exit code 0")
+        return True
+
+    except SystemExit as e:
+        # 🔑 KEY POINT: NUỐT EXIT CODE
+        if e.code == 0:
+            logger.info("Diagnostic exit code 0 (OK)")
         else:
-            logger.warning("⚠ Diagnostic returned non-zero exit code")
-            if result.stdout:
-                logger.warning(result.stdout.strip())
-            if result.stderr:
-                logger.warning(result.stderr.strip())
-
-        # IMPORTANT:
-        # Diagnostic failure does NOT crash launcher
-        return True
-
-    except subprocess.TimeoutExpired:
-        logger.error("Diagnostic timeout (60s)")
+            logger.warning(
+                f"Diagnostic exit code {e.code} – continuing anyway"
+            )
         return False
 
-    except Exception as e:
-        logger.error(f"Diagnostic execution error: {e}")
+    except Exception:
+        logger.exception("Diagnostic crashed unexpectedly")
         return False
 
 
 # =========================
-# GUI starter
+# GUI
 # =========================
-def start_gui(python_exe):
-    logger.info("Starting GUI...")
-
-    gui_script = ROOT_DIR / "app" / "gui" / "main_window.py"
-    if not gui_script.exists():
-        logger.error(f"GUI script not found: {gui_script}")
-        return False
-
+def launch_gui():
+    """
+    Launch PyQt GUI.
+    GUI controls its own event loop & sys.exit
+    """
     try:
-        subprocess.Popen(
-            [python_exe, str(gui_script)],
-            cwd=ROOT_DIR
-        )
-        logger.info("GUI process started successfully")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to start GUI: {e}")
-        return False
+        from app.gui.main_window import main
+        main()
+    except Exception:
+        logger.exception("Failed to launch GUI")
+        sys.exit(1)
 
 
 # =========================
@@ -141,26 +100,15 @@ def main():
     logger.info("VoiceForge-Nextgen Launcher")
     logger.info("=" * 60)
 
-    # Step 1: environment
-    python_exe = check_environment()
-    if not python_exe:
-        input("Environment error. Press Enter to exit...")
-        return 1
+    diagnostic_ok = run_diagnostic()
 
-    # Step 2: diagnostic
-    if not run_diagnostic(python_exe):
-        choice = input("Diagnostic failed. Continue anyway? (y/n): ")
-        if choice.lower() != "y":
-            return 1
+    if not diagnostic_ok:
+        logger.warning(
+            "Running GUI in DEGRADED MODE (diagnostic failed)"
+        )
 
-    # Step 3: GUI
-    if not start_gui(python_exe):
-        input("Failed to start GUI. Press Enter to exit...")
-        return 1
-
-    logger.info("VoiceForge launched successfully")
-    return 0
+    launch_gui()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
