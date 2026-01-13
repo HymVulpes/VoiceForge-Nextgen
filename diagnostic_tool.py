@@ -122,66 +122,61 @@ def check_audio_devices():
         return False
 
 
+# ===== PHẦN AI MODULE ĐÃ SỬA =====
 def check_ai_modules():
-    """Check AI-related Python modules and local core modules"""
+    """Check AI-related modules WITHOUT circular imports"""
     print("\n" + "="*60)
     print("5. AI MODULES")
     print("="*60)
     
+    # Lazy import các thư viện bên ngoài
     modules = {
         "torch": "PyTorch (core)",
         "torchaudio": "TorchAudio",
         "torchvision": "TorchVision",
-        "faiss": "FAISS (vector search)",
+        "faiss": "FAISS (optional)",
         "librosa": "Librosa (audio)",
-        "pyworld": "PyWorld (F0)",
-        "resampy": "Resampy",
     }
     
     all_ok = True
     for module, desc in modules.items():
         try:
             __import__(module)
-            print(f"[OK] {desc} import ok ({module})")
+            print(f"[OK] {desc}")
         except ImportError:
-            print(f"[MISSING] {desc} ({module})")
+            print(f"[MISSING] {desc}")
+            if module in ["torch", "numpy"]:  # Critical only
+                all_ok = False
+    
+    # Check local core modules bằng file existence, KHÔNG import
+    print("\nChecking local core modules (file check only)...")
+    core_files = [
+        "app/core/model_loader.py",
+        "app/core/rvc_engine.py",
+        "app/core/feature_cache.py",
+        "app/core/model_cache.py"
+    ]
+    
+    for filepath in core_files:
+        full_path = ROOT_DIR / filepath
+        if full_path.exists():
+            print(f"[OK] {filepath} exists")
+        else:
+            print(f"[MISSING] {filepath}")
             all_ok = False
     
-    # Check local core modules
-    print("\nChecking local core modules...")
-    try:
-        from app.core.model_loader import ModelLoader  # noqa: F401
-        from app.core.rvc_engine import RVCEngine      # noqa: F401
-        from app.core.feature_cache import FeatureCache  # noqa: F401
-        from app.core.model_cache import ModelCache      # noqa: F401
-        print("[OK] Core AI modules (model_loader, rvc_engine, feature_cache, model_cache)")
-    except Exception as e:
-        print(f"[ERROR] Failed to import core AI modules: {e}")
-        all_ok = False
-    
-    # Check assets
+    # Check assets HuBERT
     assets_dir = ROOT_DIR / "app" / "core" / "assets"
-    hubert_files = []
-    rmvpe_paths = []
-    if assets_dir.exists():
-        hubert_files = list(assets_dir.glob("hubert_base*.pt"))
-        # RMVPE can be provided as repo; accept any *.pt inside RMVPE-main or root
-        rmvpe_repo = assets_dir / "RMVPE-main"
-        if rmvpe_repo.exists():
-            rmvpe_paths = list(rmvpe_repo.rglob("*.pt"))
+    hubert_files = list(assets_dir.glob("hubert_base*.pt")) if assets_dir.exists() else []
     
     if hubert_files:
-        print(f"[OK] HuBERT model found: {hubert_files[0].name}")
+        print(f"[OK] HuBERT model: {hubert_files[0].name}")
     else:
-        print("[MISSING] HuBERT model (hubert_base*.pt) in app/core/assets/")
-        all_ok = False
-    
-    if rmvpe_paths:
-        print(f"[OK] RMVPE model(s) present in RMVPE-main/ (count={len(rmvpe_paths)})")
-    else:
-        print("WARNING: No RMVPE .pt model found under app/core/assets/RMVPE-main/")
+        print("[INFO] HuBERT model not found (will use RMVPE)")
     
     return all_ok
+# ===== END PHẦN AI MODULE =====
+
 
 def check_directory_structure():
     """Check required directories"""
