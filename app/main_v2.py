@@ -52,6 +52,28 @@ class VoiceForgeAppV2:
     def initialize(self):
         # Logic khởi tạo (load models, v.v.)
         logger.info("Initializing backend resources...")
+        # ADD TO app/main_v2.py in initialize() method
+
+# After buffer pool initialization:
+
+        logger.info("Scanning models in SampleVoice/...")
+        from app.core.model_scanner import ModelScanner
+
+        scanner = ModelScanner(
+            base_path=Path("SampleVoice"),
+            db_repo=self.voice_model_repo
+        )
+
+        try:
+            num_models = scanner.scan_and_update()
+            logger.info(f"✓ Found and validated {num_models} models")
+            
+            if num_models == 0:
+                logger.warning("No models found - place .pth files in SampleVoice/")
+            
+        except Exception as e:
+            logger.error(f"Model scanning failed: {e}")
+            # Continue anyway - not critical for Golden Path
         return True
 
     def start_golden_path(self):

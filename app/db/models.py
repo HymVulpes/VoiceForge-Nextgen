@@ -2,7 +2,7 @@
 Database Models
 SQLAlchemy ORM models for VoiceForge
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text ,BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -20,6 +20,15 @@ class VoiceModel(Base):
     file_size_mb = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used = Column(DateTime, default=datetime.utcnow)
+
+    # ADD TO app/db/models.py
+
+# New fields to add to VoiceModel class:
+    version = Column(String(10), default='v2')  # RVC version
+    f0_method = Column(String(20), default='harvest')  # F0 extraction method
+    file_size = Column(BigInteger, default=0)  # File size in bytes
+    last_scanned = Column(DateTime, default=datetime.utcnow)  # Last scan time
+    is_valid = Column(Boolean, default=True)  # Validation status
 
 class AudioConfig(Base):
     """Singleton audio configuration"""
